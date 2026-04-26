@@ -382,6 +382,75 @@ export const mysteryMansion: Game = {
       requirements: ["完成仪式", "获得血脉之力"],
     },
   ],
+  achievements: [
+    {
+      achievementId: "ach_good_ending",
+      title: "真相大白",
+      description: "达成好结局——打破灯盏，释放灵魂",
+      condition: { type: "ending_reached", endingId: "ending_good" },
+    },
+    {
+      achievementId: "ach_bad_ending",
+      title: "困于古宅",
+      description: "达成坏结局——恐惧中逃离，却被古宅永远困住",
+      condition: { type: "ending_reached", endingId: "ending_bad" },
+    },
+    {
+      achievementId: "ach_neutral_ending",
+      title: "黯然离去",
+      description: "达成中性结局——放弃调查，离开古宅",
+      condition: { type: "ending_reached", endingId: "ending_neutral" },
+    },
+    {
+      achievementId: "ach_secret_ending",
+      title: "新的守护者",
+      description: "达成隐藏结局——接替叔父，成为新的守望者",
+      condition: { type: "ending_reached", endingId: "ending_secret" },
+      hidden: true,
+    },
+    {
+      achievementId: "ach_manuscript",
+      title: "历史记录者",
+      description: "获得叔父的手稿",
+      condition: { type: "item_acquired", item: "叔父的手稿" },
+    },
+    {
+      achievementId: "ach_blood_power",
+      title: "血脉觉醒",
+      description: "获得血脉之力",
+      condition: { type: "item_acquired", item: "血脉之力" },
+      hidden: true,
+    },
+    {
+      achievementId: "ach_ritual_clue",
+      title: "仪式探寻者",
+      description: "发现关于仪式的线索",
+      condition: { type: "clue_found", clue: "仪式" },
+    },
+    {
+      achievementId: "ach_zhangbo_trust",
+      title: "管家的信任",
+      description: "与张伯的关系达到最高",
+      condition: { type: "relationship_threshold", npc: "张伯", min: 3 },
+    },
+    {
+      achievementId: "ach_ghost_follow",
+      title: "幽灵之友",
+      description: "与幽灵建立了联系",
+      condition: { type: "relationship_threshold", npc: "幽灵", min: 2 },
+      hidden: true,
+    },
+    {
+      achievementId: "ach_all_endings",
+      title: "古宅全知者",
+      description: "达成了所有结局",
+      condition: {
+        type: "all_endings",
+        endingIds: ["ending_good", "ending_bad", "ending_neutral", "ending_secret"],
+      },
+      hidden: true,
+    },
+  ],
   stateSystem: {
     inventory: ["生锈的钥匙", "叔父的手稿", "血脉之力"],
     clues: [

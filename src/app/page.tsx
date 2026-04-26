@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
 import { mysteryMansion } from "@/data/mysteryMansion";
-import type { Game, Scene, Ending } from "@/types/game";
+import type { Game, Scene, Ending, HistoryEntry, CompletedAchievement, Achievement } from "@/types/game";
 
 const GAME_DATA: Game = mysteryMansion;
 
@@ -15,6 +15,10 @@ function findEnding(game: Game, endingId: string): Ending | undefined {
   return game.endings.find((e) => e.endingId === endingId);
 }
 
+function findAchievement(game: Game, achievementId: string): Achievement | undefined {
+  return game.achievements.find((a) => a.achievementId === achievementId);
+}
+
 const endingTypeLabel: Record<string, { label: string; color: string }> = {
   good: { label: "好结局", color: "text-amber-300" },
   bad: { label: "坏结局", color: "text-red-400" },
@@ -23,9 +27,27 @@ const endingTypeLabel: Record<string, { label: string; color: string }> = {
 };
 
 export default function Home() {
-  const { state, startGame, makeChoice, resetGame, hasSave } = useGame();
+  const {
+    state,
+    startGame,
+    makeChoice,
+    resetGame,
+    hasSave,
+    canUndo,
+    undoChoice,
+    rollbackTo,
+    setGameData,
+    lastUnlockedAchievement,
+    dismissAchievement,
+  } = useGame();
+
   const [fadeIn, setFadeIn] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Register game data for achievement checking
+  useEffect(() => {
+    setGameData(GAME_DATA);
+  }, [setGameData]);
 
   const currentScene = useMemo(
     () => (state.currentScene ? findScene(GAME_DATA, state.currentScene) : undefined),
@@ -43,21 +65,34 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [state.currentScene, state.currentEnding]);
 
-  const handleKeyChoice = useCallback(
+  // Auto-dismiss achievement notification
+  useEffect(() => {
+    if (lastUnlockedAchievement) {
+      const t = setTimeout(dismissAchievement, 4000);
+      return () => clearTimeout(t);
+    }
+  }, [lastUnlockedAchievement, dismissAchievement]);
+
+  const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        if (canUndo) undoChoice();
+        return;
+      }
       if (!currentScene || currentEnding) return;
       const num = parseInt(e.key);
       if (num >= 1 && num <= currentScene.choices.length) {
         makeChoice(currentScene.choices[num - 1], currentScene.sceneId);
       }
     },
-    [currentScene, currentEnding, makeChoice]
+    [currentScene, currentEnding, makeChoice, canUndo, undoChoice]
   );
 
   useEffect(() => {
-    window.addEventListener("keydown", handleKeyChoice);
-    return () => window.removeEventListener("keydown", handleKeyChoice);
-  }, [handleKeyChoice]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
 
   const handleStart = useCallback(() => {
     startGame(GAME_DATA.gameId, GAME_DATA.scenes[0].sceneId);
@@ -91,6 +126,27 @@ export default function Home() {
             <p className="text-lg leading-loose text-zinc-300">{currentEnding.description}</p>
           </div>
 
+          {/* Achievements earned this playthrough */}
+          {state.completedAchievements.length > 0 && (
+            <div className="mt-8 border-t border-zinc-800 pt-6">
+              <div className="text-xs text-zinc-600 tracking-wider mb-4">本次达成的成就</div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {state.completedAchievements.map((ca) => {
+                  const ach = findAchievement(GAME_DATA, ca.achievementId);
+                  if (!ach) return null;
+                  return (
+                    <div
+                      key={ca.achievementId}
+                      className="px-3 py-1.5 rounded-full border border-amber-900/40 bg-amber-950/30 text-amber-300 text-xs"
+                    >
+                      {ach.title}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="mt-12 space-y-3">
             <p className="text-sm text-zinc-600 mb-6">
               收集 {state.clues.length} 条线索 / 持有 {state.inventory.length} 件道具 / 做出 {state.choiceHistory.length} 次选择
@@ -101,6 +157,15 @@ export default function Home() {
             >
               重新开始
             </button>
+            <br />
+            {canUndo && (
+              <button
+                onClick={undoChoice}
+                className="px-10 py-3 rounded-lg border border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors"
+              >
+                撤销最后选择
+              </button>
+            )}
             <br />
             <button
               onClick={handleBackToTitle}
@@ -119,7 +184,21 @@ export default function Home() {
     return (
       <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100">
         <header className="border-b border-zinc-800/60 px-4 py-3 flex items-center justify-between shrink-0">
-          <div className="text-sm text-zinc-500 tracking-wide">{GAME_DATA.title}</div>
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-zinc-500 tracking-wide">{GAME_DATA.title}</div>
+            <button
+              onClick={undoChoice}
+              disabled={!canUndo}
+              className={`p-1 rounded transition-colors ${canUndo ? "text-zinc-500 hover:text-zinc-200" : "text-zinc-800 cursor-not-allowed"}`}
+              aria-label="撤销上一步"
+              title="撤销上一步选择 (Ctrl+Z)"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M3 7h7a4 4 0 010 8H7" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M6 4L3 7l3 3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex gap-3 text-xs text-zinc-600">
               <span>道具 {state.inventory.length}</span>
@@ -127,6 +206,8 @@ export default function Home() {
               <span>线索 {state.clues.length}</span>
               <span className="text-zinc-800">|</span>
               <span>选择 {state.choiceHistory.length}</span>
+              <span className="text-zinc-800">|</span>
+              <span>成就 {state.completedAchievements.length}/{GAME_DATA.achievements.length}</span>
             </div>
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -171,14 +252,25 @@ export default function Home() {
                     </div>
                   </button>
                 ))}
-                <div className="text-xs text-zinc-800 mt-4">按数字键可快速选择</div>
+                <div className="flex gap-4 text-xs text-zinc-800 mt-4">
+                  <span>按数字键快速选择</span>
+                  {canUndo && <span>Ctrl+Z 撤销</span>}
+                </div>
               </div>
             </div>
           </main>
 
           {/* Desktop sidebar */}
           <aside className="hidden md:flex w-72 border-l border-zinc-800/60 flex-col overflow-y-auto shrink-0">
-            <Sidebar inventory={state.inventory} clues={state.clues} relationships={state.relationships} />
+            <Sidebar
+              operationHistory={state.operationHistory}
+              onRollback={rollbackTo}
+              inventory={state.inventory}
+              clues={state.clues}
+              relationships={state.relationships}
+              completedAchievements={state.completedAchievements}
+              gameData={GAME_DATA}
+            />
           </aside>
 
           {/* Mobile sidebar overlay */}
@@ -193,11 +285,28 @@ export default function Home() {
                     </svg>
                   </button>
                 </div>
-                <Sidebar inventory={state.inventory} clues={state.clues} relationships={state.relationships} />
+                <Sidebar
+                  operationHistory={state.operationHistory}
+                  onRollback={rollbackTo}
+                  inventory={state.inventory}
+                  clues={state.clues}
+                  relationships={state.relationships}
+                  completedAchievements={state.completedAchievements}
+                  gameData={GAME_DATA}
+                />
               </aside>
             </div>
           )}
         </div>
+
+        {/* Achievement unlock notification */}
+        {lastUnlockedAchievement && (
+          <AchievementNotification
+            achievement={lastUnlockedAchievement}
+            gameData={GAME_DATA}
+            onDismiss={dismissAchievement}
+          />
+        )}
       </div>
     );
   }
@@ -205,6 +314,43 @@ export default function Home() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500">
       <p>场景未找到</p>
+    </div>
+  );
+}
+
+function AchievementNotification({
+  achievement,
+  gameData,
+  onDismiss,
+}: {
+  achievement: CompletedAchievement;
+  gameData: Game;
+  onDismiss: () => void;
+}) {
+  const ach = findAchievement(gameData, achievement.achievementId);
+  if (!ach) return null;
+
+  return (
+    <div className="fixed top-4 right-4 z-50 animate-slide-in">
+      <div className="bg-zinc-900 border border-amber-800/50 rounded-lg px-4 py-3 shadow-lg shadow-amber-900/20 max-w-xs">
+        <div className="flex items-start gap-3">
+          <div className="text-amber-400 mt-0.5">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+              <path d="M9 1l2.1 4.3L16 5.8l-3.5 3.4.8 4.8L9 11.8 4.7 14l.8-4.8L2 5.8l4.9-.5L9 1z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-amber-400/70 tracking-wider mb-0.5">成就解锁</div>
+            <div className="text-sm text-zinc-100 font-medium">{ach.title}</div>
+            <div className="text-xs text-zinc-500 mt-0.5">{ach.description}</div>
+          </div>
+          <button onClick={onDismiss} className="text-zinc-600 hover:text-zinc-400 shrink-0">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M3 3l8 8M11 3l-8 8" />
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -250,19 +396,130 @@ function TitleScreen({ hasSave, onStart, onReset }: { hasSave: boolean; onStart:
 }
 
 function Sidebar({
+  operationHistory,
+  onRollback,
   inventory,
   clues,
   relationships,
+  completedAchievements,
+  gameData,
 }: {
+  operationHistory: HistoryEntry[];
+  onRollback: (index: number) => void;
   inventory: string[];
   clues: string[];
   relationships: Record<string, number>;
+  completedAchievements: CompletedAchievement[];
+  gameData: Game;
 }) {
   return (
     <div className="p-4 space-y-6 text-sm">
+      <HistoryPanel operationHistory={operationHistory} onRollback={onRollback} />
+      <AchievementPanel completedAchievements={completedAchievements} gameData={gameData} />
       <Section title="道具" items={inventory} emptyText="暂无道具" />
       <Section title="线索" items={clues} emptyText="暂无线索" />
       <Relationships relationships={relationships} />
+    </div>
+  );
+}
+
+function AchievementPanel({
+  completedAchievements,
+  gameData,
+}: {
+  completedAchievements: CompletedAchievement[];
+  gameData: Game;
+}) {
+  const unlockedIds = new Set(completedAchievements.map((a) => a.achievementId));
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-3">
+        成就 {completedAchievements.length}/{gameData.achievements.filter((a) => !a.hidden || unlockedIds.has(a.achievementId)).length}
+      </h3>
+      <ul className="space-y-1.5">
+        {gameData.achievements.map((ach) => {
+          const isUnlocked = unlockedIds.has(ach.achievementId);
+          // Hide hidden achievements that aren't unlocked
+          if (ach.hidden && !isUnlocked) return null;
+
+          const completed = completedAchievements.find((ca) => ca.achievementId === ach.achievementId);
+          const isExpanded = expandedId === ach.achievementId;
+
+          return (
+            <li key={ach.achievementId}>
+              <button
+                onClick={() => setExpandedId(isExpanded ? null : ach.achievementId)}
+                className={`w-full text-left pl-3 border-l py-0.5 text-xs transition-colors ${
+                  isUnlocked
+                    ? "border-amber-700 text-amber-300 hover:text-amber-200"
+                    : "border-zinc-800 text-zinc-600 hover:text-zinc-400"
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  {isUnlocked ? (
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="shrink-0">
+                      <path d="M5 0.5l1.2 2.4 2.7.4-2 1.9.5 2.7L5 6.7 2.6 7.9l.5-2.7-2-1.9 2.7-.4L5 0.5z" />
+                    </svg>
+                  ) : (
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="text-zinc-700 shrink-0">
+                      <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1" fill="none" />
+                    </svg>
+                  )}
+                  <span>{isUnlocked ? ach.title : "???"}</span>
+                </div>
+              </button>
+              {isExpanded && (
+                <div className="ml-3 pl-3 border-l border-zinc-800 mt-0.5 mb-1">
+                  <p className="text-xs text-zinc-500 py-0.5">{ach.description}</p>
+                  {completed && (
+                    <p className="text-xs text-zinc-700 py-0.5">
+                      来源：{completed.source.description}
+                      <br />
+                      <span className="text-zinc-800">
+                        「{completed.source.choiceText}」({completed.source.sceneId})
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function HistoryPanel({
+  operationHistory,
+  onRollback,
+}: {
+  operationHistory: HistoryEntry[];
+  onRollback: (index: number) => void;
+}) {
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-3">操作历史</h3>
+      {operationHistory.length === 0 ? (
+        <p className="text-zinc-800 text-xs">暂无操作记录</p>
+      ) : (
+        <ul className="space-y-1">
+          {operationHistory.map((entry, i) => (
+            <li key={i}>
+              <button
+                onClick={() => onRollback(i)}
+                className="w-full text-left pl-3 border-l border-zinc-800 hover:border-zinc-500 hover:text-zinc-100 transition-colors text-xs text-zinc-500 py-0.5"
+                title="回退至此选择之前的状态"
+              >
+                <span className="text-zinc-700 mr-1">#{i + 1}</span>
+                {entry.choiceText}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

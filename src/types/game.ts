@@ -57,6 +57,31 @@ export interface Ending {
   type: "good" | "bad" | "neutral" | "secret";
 }
 
+export interface Achievement {
+  achievementId: string;
+  title: string;
+  description: string;
+  condition:
+    | { type: "ending_reached"; endingId: string }
+    | { type: "item_acquired"; item: string }
+    | { type: "clue_found"; clue: string }
+    | { type: "relationship_threshold"; npc: string; min: number }
+    | { type: "all_endings"; endingIds: string[] }
+    | { type: "choice_made"; sceneId: string; choiceId: string };
+  hidden?: boolean;
+}
+
+export interface CompletedAchievement {
+  achievementId: string;
+  unlockedAt: number;
+  source: {
+    sceneId: string;
+    choiceId: string;
+    choiceText: string;
+    description: string;
+  };
+}
+
 export interface StateSystem {
   inventory: string[];
   clues: string[];
@@ -72,6 +97,7 @@ export interface Game {
   characters: Characters;
   scenes: Scene[];
   endings: Ending[];
+  achievements: Achievement[];
   stateSystem: StateSystem;
 }
 
@@ -83,6 +109,8 @@ export interface GameState {
   relationships: Record<string, number>;
   choiceHistory: ChoiceRecord[];
   currentEnding: string | null;
+  operationHistory: HistoryEntry[];
+  completedAchievements: CompletedAchievement[];
 }
 
 export interface ChoiceRecord {
@@ -91,11 +119,22 @@ export interface ChoiceRecord {
   timestamp: number;
 }
 
+export interface HistoryEntry {
+  snapshot: Omit<GameState, "operationHistory">;
+  sceneId: string;
+  choiceId: string;
+  choiceText: string;
+  timestamp: number;
+}
+
 export type GameAction =
   | { type: "START_GAME"; gameId: string; firstScene: string }
   | { type: "MAKE_CHOICE"; choice: Choice; sceneId: string }
   | { type: "RESET_GAME" }
-  | { type: "LOAD_GAME"; state: GameState };
+  | { type: "LOAD_GAME"; state: GameState }
+  | { type: "UNDO_CHOICE" }
+  | { type: "ROLLBACK_TO"; targetIndex: number }
+  | { type: "UNLOCK_ACHIEVEMENT"; achievement: CompletedAchievement };
 
 export interface GenerationParams {
   theme: string;

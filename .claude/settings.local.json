@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --no-import-alias --use-npm)",
+      "Read(//d/TraeProject/**)",
+      "Bash(npx create-next-app@latest xiaoshouyouxi-temp --typescript --tailwind --eslint --app --src-dir --no-import-alias --use-npm)",
+      "Bash(cp -r \"D:/TraeProject/xiaoshouyouxi-temp/\"* .)",
+      "Bash(cp \"D:/TraeProject/xiaoshouyouxi-temp/.gitignore\" .)",
+      "Bash(cp \"D:/TraeProject/xiaoshouyouxi-temp/.eslintrc.json\" .)",
+      "Bash(cp -r \"D:/TraeProject/xiaoshouyouxi-temp/src\" \"D:/TraeProject/XiaoShouYouXi/\")",
+      "Bash(cp \"D:/TraeProject/xiaoshouyouxi-temp/package.json\" \"D:/TraeProject/XiaoShouYouXi/\")",
+      "Bash(cp \"D:/TraeProject/xiaoshouyouxi-temp/package-lock.json\" \"D:/TraeProject/XiaoShouYouXi/\")",
+      "Bash(cp \"D:/TraeProject/xiaoshouyouxi-temp/tsconfig.json\" \"D:/TraeProject/XiaoShouYouXi/\")",
+      "Bash(cp \"D:/TraeProject/xiaoshouyouxi-temp/postcss.config.mjs\" \"D:/TraeProject/XiaoShouYouXi/\")",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(kill %1)",
+      "Bash(npx next *)",
+      "Bash(rm -rf node_modules)",
+      "Bash(npm install *)",
+      "Bash(gh auth *)",
+      "Bash(git --version)",
+      "Bash(where git *)",
+      "Bash(where gh *)",
+      "Bash(git init *)",
+      "Bash(git config *)",
+      "Bash(winget install *)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version)",
+      "Bash(\"/c/Program Files \\(x86\\)/GitHub CLI/gh.exe\" --version)",
+      "Bash(gh --version)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(gh repo *)",
+      "Bash(git push *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://github.com)",
+      "Bash(ssh -T git@github.com)",
+      "Bash(npx vitest *)"
+    ]
+  }
+}
