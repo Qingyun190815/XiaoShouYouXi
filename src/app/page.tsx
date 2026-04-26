@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { mysteryMansion } from "@/data/mysteryMansion";
 import type { Game, Scene, Ending, HistoryEntry, CompletedAchievement, Achievement } from "@/types/game";
 
-const GAME_DATA: Game = mysteryMansion;
+const BUILTIN_GAMES: { id: string; label: string; data: Game }[] = [
+  { id: "game_mystery_001", label: "古宅之谜", data: mysteryMansion },
+];
 
 function findScene(game: Game, sceneId: string): Scene | undefined {
   return game.scenes.find((s) => s.sceneId === sceneId);
@@ -19,6 +21,36 @@ function findAchievement(game: Game, achievementId: string): Achievement | undef
   return game.achievements.find((a) => a.achievementId === achievementId);
 }
 
+function validateGameJson(data: unknown): { valid: boolean; game: Game | null; errors: string[] } {
+  const errors: string[] = [];
+  if (!data || typeof data !== "object") {
+    return { valid: false, game: null, errors: ["JSON 内容必须是一个对象"] };
+  }
+  const g = data as Record<string, unknown>;
+
+  if (typeof g.gameId !== "string" || !g.gameId) errors.push("缺少 gameId");
+  if (typeof g.title !== "string" || !g.title) errors.push("缺少 title");
+  if (typeof g.genre !== "string") errors.push("缺少 genre");
+  if (typeof g.difficulty !== "string") errors.push("缺少 difficulty");
+  if (!g.worldSetting || typeof g.worldSetting !== "object") errors.push("缺少 worldSetting");
+  if (!g.characters || typeof g.characters !== "object") errors.push("缺少 characters");
+  if (!Array.isArray(g.scenes) || g.scenes.length === 0) errors.push("scenes 必须是非空数组");
+  if (!Array.isArray(g.endings) || g.endings.length === 0) errors.push("endings 必须是非空数组");
+
+  if (Array.isArray(g.scenes)) {
+    for (let i = 0; i < g.scenes.length; i++) {
+      const s = g.scenes[i] as Record<string, unknown>;
+      if (typeof s.sceneId !== "string" || !s.sceneId) errors.push(`scenes[${i}] 缺少 sceneId`);
+      if (typeof s.name !== "string") errors.push(`scenes[${i}] 缺少 name`);
+      if (typeof s.description !== "string") errors.push(`scenes[${i}] 缺少 description`);
+      if (!Array.isArray(s.choices) || s.choices.length === 0) errors.push(`scenes[${i}] choices 必须是非空数组`);
+    }
+  }
+
+  if (errors.length > 0) return { valid: false, game: null, errors };
+  return { valid: true, game: g as unknown as Game, errors: [] };
+}
+
 const endingTypeLabel: Record<string, { label: string; color: string }> = {
   good: { label: "好结局", color: "text-amber-300" },
   bad: { label: "坏结局", color: "text-red-400" },
@@ -29,6 +61,8 @@ const endingTypeLabel: Record<string, { label: string; color: string }> = {
 export default function Home() {
   const {
     state,
+    gameData,
+    setGameData,
     startGame,
     makeChoice,
     resetGame,
@@ -36,7 +70,6 @@ export default function Home() {
     canUndo,
     undoChoice,
     rollbackTo,
-    setGameData,
     lastUnlockedAchievement,
     dismissAchievement,
   } = useGame();
@@ -44,19 +77,14 @@ export default function Home() {
   const [fadeIn, setFadeIn] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Register game data for achievement checking
-  useEffect(() => {
-    setGameData(GAME_DATA);
-  }, [setGameData]);
-
   const currentScene = useMemo(
-    () => (state.currentScene ? findScene(GAME_DATA, state.currentScene) : undefined),
-    [state.currentScene]
+    () => (gameData && state.currentScene ? findScene(gameData, state.currentScene) : undefined),
+    [gameData, state.currentScene]
   );
 
   const currentEnding = useMemo(
-    () => (state.currentEnding ? findEnding(GAME_DATA, state.currentEnding) : undefined),
-    [state.currentEnding]
+    () => (gameData && state.currentEnding ? findEnding(gameData, state.currentEnding) : undefined),
+    [gameData, state.currentEnding]
   );
 
   useEffect(() => {
@@ -94,14 +122,18 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  const handleStart = useCallback(() => {
-    startGame(GAME_DATA.gameId, GAME_DATA.scenes[0].sceneId);
-  }, [startGame]);
+  const handleStartGame = useCallback((game: Game) => {
+    setGameData(game);
+    startGame(game.gameId, game.scenes[0].sceneId);
+  }, [setGameData, startGame]);
 
   const handleRestart = useCallback(() => {
-    resetGame();
-    startGame(GAME_DATA.gameId, GAME_DATA.scenes[0].sceneId);
-  }, [resetGame, startGame]);
+    if (gameData) {
+      setGameData(gameData);
+      resetGame();
+      startGame(gameData.gameId, gameData.scenes[0].sceneId);
+    }
+  }, [setGameData, resetGame, startGame, gameData]);
 
   const handleBackToTitle = useCallback(() => {
     resetGame();
@@ -109,7 +141,22 @@ export default function Home() {
 
   // Title screen
   if (!state.gameId) {
-    return <TitleScreen hasSave={hasSave} onStart={handleStart} onReset={resetGame} />;
+    return (
+      <TitleScreen
+        hasSave={hasSave}
+        builtinGames={BUILTIN_GAMES}
+        onStartGame={handleStartGame}
+        onReset={resetGame}
+      />
+    );
+  }
+
+  if (!gameData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-500">
+        <p>加载中…</p>
+      </div>
+    );
   }
 
   // Ending screen
@@ -126,13 +173,12 @@ export default function Home() {
             <p className="text-lg leading-loose text-zinc-300">{currentEnding.description}</p>
           </div>
 
-          {/* Achievements earned this playthrough */}
           {state.completedAchievements.length > 0 && (
             <div className="mt-8 border-t border-zinc-800 pt-6">
               <div className="text-xs text-zinc-600 tracking-wider mb-4">本次达成的成就</div>
               <div className="flex flex-wrap justify-center gap-2">
                 {state.completedAchievements.map((ca) => {
-                  const ach = findAchievement(GAME_DATA, ca.achievementId);
+                  const ach = findAchievement(gameData, ca.achievementId);
                   if (!ach) return null;
                   return (
                     <div
@@ -185,7 +231,7 @@ export default function Home() {
       <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100">
         <header className="border-b border-zinc-800/60 px-4 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="text-sm text-zinc-500 tracking-wide">{GAME_DATA.title}</div>
+            <div className="text-sm text-zinc-500 tracking-wide">{gameData.title}</div>
             <button
               onClick={undoChoice}
               disabled={!canUndo}
@@ -207,7 +253,7 @@ export default function Home() {
               <span className="text-zinc-800">|</span>
               <span>选择 {state.choiceHistory.length}</span>
               <span className="text-zinc-800">|</span>
-              <span>成就 {state.completedAchievements.length}/{GAME_DATA.achievements.length}</span>
+              <span>成就 {state.completedAchievements.length}/{gameData.achievements.length}</span>
             </div>
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -269,7 +315,7 @@ export default function Home() {
               clues={state.clues}
               relationships={state.relationships}
               completedAchievements={state.completedAchievements}
-              gameData={GAME_DATA}
+              gameData={gameData}
             />
           </aside>
 
@@ -292,7 +338,7 @@ export default function Home() {
                   clues={state.clues}
                   relationships={state.relationships}
                   completedAchievements={state.completedAchievements}
-                  gameData={GAME_DATA}
+                  gameData={gameData}
                 />
               </aside>
             </div>
@@ -303,7 +349,7 @@ export default function Home() {
         {lastUnlockedAchievement && (
           <AchievementNotification
             achievement={lastUnlockedAchievement}
-            gameData={GAME_DATA}
+            gameData={gameData}
             onDismiss={dismissAchievement}
           />
         )}
@@ -355,41 +401,215 @@ function AchievementNotification({
   );
 }
 
-function TitleScreen({ hasSave, onStart, onReset }: { hasSave: boolean; onStart: () => void; onReset: () => void }) {
+function TitleScreen({
+  hasSave,
+  builtinGames,
+  onStartGame,
+  onReset,
+}: {
+  hasSave: boolean;
+  builtinGames: { id: string; label: string; data: Game }[];
+  onStartGame: (game: Game) => void;
+  onReset: () => void;
+}) {
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const raw = JSON.parse(ev.target?.result as string);
+        const { valid, game, errors } = validateGameJson(raw);
+        if (!valid || !game) {
+          setImportError(`导入失败：${errors.join("；")}`);
+          return;
+        }
+        onStartGame(game);
+      } catch {
+        setImportError("导入失败：JSON 格式无效");
+      }
+    };
+    reader.readAsText(file);
+    // Reset so the same file can be re-imported
+    e.target.value = "";
+  }, [onStartGame]);
+
+  const handleExportTemplate = useCallback(() => {
+    const template: Game = {
+      gameId: "game_custom_001",
+      title: "我的故事",
+      genre: "悬疑",
+      difficulty: "medium",
+      worldSetting: {
+        era: "现代",
+        location: "一个神秘的地方",
+        factions: ["势力A", "势力B"],
+        coreConflict: "核心冲突描述",
+      },
+      characters: {
+        protagonist: {
+          name: "主角名",
+          identity: "主角身份",
+          goal: "主角目标",
+          personality: "性格描述",
+        },
+        npcs: [
+          {
+            id: "npc_001",
+            name: "NPC名",
+            identity: "NPC身份",
+            role: "引导者",
+            personality: "性格描述",
+          },
+        ],
+      },
+      scenes: [
+        {
+          sceneId: "scene_001",
+          name: "第一个场景",
+          description: "场景描述（50-200字），生动具体有画面感。",
+          choices: [
+            {
+              choiceId: "choice_001a",
+              text: "选项一",
+              consequence: "选择的后果",
+              nextScene: "scene_002",
+              stateChanges: { items: ["道具名"], clues: ["线索名"] },
+            },
+            {
+              choiceId: "choice_001b",
+              text: "选项二",
+              consequence: "另一个后果",
+              nextScene: "ending_good",
+              stateChanges: {},
+            },
+          ],
+        },
+        {
+          sceneId: "scene_002",
+          name: "第二个场景",
+          description: "后续场景描述。",
+          choices: [
+            {
+              choiceId: "choice_002a",
+              text: "继续探索",
+              consequence: "探索的结果",
+              nextScene: "ending_good",
+              stateChanges: { clues: ["关键线索"] },
+            },
+            {
+              choiceId: "choice_002b",
+              text: "放弃离开",
+              consequence: "你选择了离开",
+              nextScene: "ending_neutral",
+              stateChanges: {},
+            },
+          ],
+        },
+      ],
+      endings: [
+        {
+          endingId: "ending_good",
+          title: "好结局",
+          description: "结局描述（100-300字）。",
+          requirements: ["达成条件描述"],
+          type: "good",
+        },
+        {
+          endingId: "ending_neutral",
+          title: "中性结局",
+          description: "另一个结局描述。",
+          requirements: ["其他条件"],
+          type: "neutral",
+        },
+      ],
+      achievements: [
+        {
+          achievementId: "ach_good_ending",
+          title: "好结局成就",
+          description: "达成好结局",
+          condition: { type: "ending_reached", endingId: "ending_good" },
+        },
+      ],
+      stateSystem: {
+        inventory: ["道具名"],
+        clues: ["线索名"],
+        relationships: { "NPC名": 0 },
+      },
+    };
+
+    const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "story-template.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 text-zinc-100 p-6">
-      <div className="max-w-md text-center">
+      <div className="max-w-md text-center w-full">
         <div className="text-xs tracking-[0.4em] text-zinc-700 mb-8 uppercase">文字探险游戏</div>
-        <h1 className="text-5xl font-bold mb-4 tracking-tight">{GAME_DATA.title}</h1>
-        <div className="w-12 h-px bg-zinc-700 mx-auto mb-6" />
-        <div className="flex items-center justify-center gap-3 text-sm text-zinc-500 mb-6">
-          <span>{GAME_DATA.genre}</span>
-          <span className="text-zinc-800">/</span>
-          <span>{GAME_DATA.worldSetting.era}</span>
-          <span className="text-zinc-800">/</span>
-          <span>{GAME_DATA.worldSetting.location}</span>
-        </div>
-        <p className="text-zinc-400 leading-relaxed mb-3">{GAME_DATA.worldSetting.coreConflict}</p>
-        <p className="text-sm text-zinc-600 mb-12">
-          {GAME_DATA.characters.protagonist.name} — {GAME_DATA.characters.protagonist.identity}
-        </p>
+        <h1 className="text-5xl font-bold mb-4 tracking-tight">选择你的故事</h1>
+        <div className="w-12 h-px bg-zinc-700 mx-auto mb-10" />
 
-        <div className="flex flex-col gap-3 items-center">
-          <button
-            onClick={onStart}
-            className="w-64 px-8 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-medium hover:bg-white transition-colors"
-          >
-            开始游戏
-          </button>
-          {hasSave && (
+        {/* Built-in games */}
+        <div className="space-y-3 mb-8">
+          {builtinGames.map((bg) => (
             <button
-              onClick={() => { onReset(); onStart(); }}
-              className="w-64 px-8 py-3 rounded-lg border border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors"
+              key={bg.id}
+              onClick={() => onStartGame(bg.data)}
+              className="w-64 px-8 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-medium hover:bg-white transition-colors"
             >
-              新游戏（覆盖存档）
+              {bg.label}
             </button>
+          ))}
+        </div>
+
+        <div className="w-12 h-px bg-zinc-800 mx-auto mb-8" />
+
+        {/* Import / Export */}
+        <div className="space-y-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImport}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-64 px-8 py-3 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
+          >
+            导入故事（JSON）
+          </button>
+          <button
+            onClick={handleExportTemplate}
+            className="w-64 px-8 py-3 rounded-lg border border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600 transition-colors"
+          >
+            下载故事模板
+          </button>
+          {importError && (
+            <p className="text-xs text-red-400 mt-2 max-w-xs mx-auto">{importError}</p>
           )}
         </div>
+
+        {hasSave && (
+          <div className="mt-8">
+            <button
+              onClick={onReset}
+              className="text-xs text-zinc-700 hover:text-zinc-400 transition-colors"
+            >
+              清除存档
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -433,17 +653,18 @@ function AchievementPanel({
   const unlockedIds = new Set(completedAchievements.map((a) => a.achievementId));
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const visibleAchievements = gameData.achievements.filter(
+    (a) => !a.hidden || unlockedIds.has(a.achievementId)
+  );
+
   return (
     <div>
       <h3 className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-3">
-        成就 {completedAchievements.length}/{gameData.achievements.filter((a) => !a.hidden || unlockedIds.has(a.achievementId)).length}
+        成就 {completedAchievements.length}/{visibleAchievements.length}
       </h3>
       <ul className="space-y-1.5">
-        {gameData.achievements.map((ach) => {
+        {visibleAchievements.map((ach) => {
           const isUnlocked = unlockedIds.has(ach.achievementId);
-          // Hide hidden achievements that aren't unlocked
-          if (ach.hidden && !isUnlocked) return null;
-
           const completed = completedAchievements.find((ca) => ca.achievementId === ach.achievementId);
           const isExpanded = expandedId === ach.achievementId;
 

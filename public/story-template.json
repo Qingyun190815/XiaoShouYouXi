@@ -1,0 +1,147 @@
+{
+  "gameId": "game_custom_001",
+  "title": "我的故事",
+  "genre": "悬疑",
+  "difficulty": "medium",
+  "worldSetting": {
+    "era": "现代",
+    "location": "一个神秘的地方",
+    "factions": ["势力A", "势力B"],
+    "coreConflict": "核心冲突描述——这是推动故事发展的根本矛盾"
+  },
+  "characters": {
+    "protagonist": {
+      "name": "主角名",
+      "identity": "主角身份",
+      "goal": "主角目标动机",
+      "personality": "性格描述"
+    },
+    "npcs": [
+      {
+        "id": "npc_001",
+        "name": "NPC名",
+        "identity": "NPC身份",
+        "role": "引导者",
+        "personality": "性格描述"
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "sceneId": "scene_001",
+      "name": "第一个场景",
+      "description": "场景描述（50-200字），生动具体有画面感。描述主角所处的环境、氛围和关键细节。",
+      "choices": [
+        {
+          "choiceId": "choice_001a",
+          "text": "选项一文本",
+          "consequence": "选择后果描述",
+          "nextScene": "scene_002",
+          "stateChanges": {
+            "items": ["获得的道具名"],
+            "clues": ["发现的线索名"],
+            "relationships": { "NPC名": 1 }
+          }
+        },
+        {
+          "choiceId": "choice_001b",
+          "text": "选项二文本",
+          "consequence": "另一个后果描述",
+          "nextScene": "scene_003",
+          "stateChanges": {}
+        }
+      ]
+    },
+    {
+      "sceneId": "scene_002",
+      "name": "第二个场景",
+      "description": "后续场景描述。根据上一个选择，主角来到了新的地点。",
+      "choices": [
+        {
+          "choiceId": "choice_002a",
+          "text": "继续探索",
+          "consequence": "探索的结果",
+          "nextScene": "ending_good",
+          "stateChanges": { "clues": ["关键线索"] }
+        },
+        {
+          "choiceId": "choice_002b",
+          "text": "放弃离开",
+          "consequence": "你选择了离开",
+          "nextScene": "ending_neutral",
+          "stateChanges": {}
+        }
+      ]
+    },
+    {
+      "sceneId": "scene_003",
+      "name": "另一个分支",
+      "description": "另一个分支场景的描述。",
+      "choices": [
+        {
+          "choiceId": "choice_003a",
+          "text": "勇敢面对",
+          "consequence": "你选择直面危险",
+          "nextScene": "ending_good",
+          "stateChanges": { "relationships": { "NPC名": 2 } }
+        },
+        {
+          "choiceId": "choice_003b",
+          "text": "转身逃跑",
+          "consequence": "恐惧支配了你",
+          "nextScene": "ending_bad",
+          "stateChanges": {}
+        }
+      ]
+    }
+  ],
+  "endings": [
+    {
+      "endingId": "ending_good",
+      "title": "好结局标题",
+      "description": "好结局描述（100-300字），描述主角如何克服困难获得成功。",
+      "requirements": ["达成条件描述"],
+      "type": "good"
+    },
+    {
+      "endingId": "ending_bad",
+      "title": "坏结局标题",
+      "description": "坏结局描述，描述主角的失败或不幸。",
+      "requirements": ["达成条件"],
+      "type": "bad"
+    },
+    {
+      "endingId": "ending_neutral",
+      "title": "中性结局标题",
+      "description": "中性结局描述，既非完全成功也非完全失败。",
+      "requirements": ["达成条件"],
+      "type": "neutral"
+    }
+  ],
+  "achievements": [
+    {
+      "achievementId": "ach_good_ending",
+      "title": "好结局成就",
+      "description": "达成好结局",
+      "condition": { "type": "ending_reached", "endingId": "ending_good" }
+    },
+    {
+      "achievementId": "ach_bad_ending",
+      "title": "坏结局成就",
+      "description": "达成坏结局",
+      "condition": { "type": "ending_reached", "endingId": "ending_bad" }
+    },
+    {
+      "achievementId": "ach_hidden",
+      "title": "隐藏成就",
+      "description": "特殊条件触发的成就",
+      "condition": { "type": "item_acquired", "item": "特殊道具" },
+      "hidden": true
+    }
+  ],
+  "stateSystem": {
+    "inventory": ["可能的道具"],
+    "clues": ["可能的线索"],
+    "relationships": { "NPC名": 0 }
+  }
+}

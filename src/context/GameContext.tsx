@@ -6,12 +6,14 @@ import {
   useReducer,
   useEffect,
   useCallback,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { GameState, GameAction, Choice, HistoryEntry, CompletedAchievement, Achievement, Game } from "@/types/game";
 
 const STORAGE_KEY = "text_adventure_save";
+const GAME_DATA_KEY = "text_adventure_game_data";
 const ACHIEVEMENTS_KEY = "text_adventure_achievements";
 
 export const initialState: GameState = {
@@ -93,6 +95,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ],
         currentEnding: isEnding ? choice.nextScene : null,
         operationHistory: [...state.operationHistory, historyEntry],
+        completedAchievements: state.completedAchievements,
       };
     }
 
@@ -202,6 +205,8 @@ function buildAchievementSource(
 
 interface GameContextValue {
   state: GameState;
+  gameData: Game | null;
+  setGameData: (game: Game) => void;
   startGame: (gameId: string, firstScene: string) => void;
   makeChoice: (choice: Choice, sceneId: string) => void;
   resetGame: () => void;
@@ -209,7 +214,6 @@ interface GameContextValue {
   canUndo: boolean;
   undoChoice: () => void;
   rollbackTo: (targetIndex: number) => void;
-  setGameData: (game: Game) => void;
   lastUnlockedAchievement: CompletedAchievement | null;
   dismissAchievement: () => void;
 }
@@ -218,11 +222,20 @@ const GameContext = createContext<GameContextValue | null>(null);
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(gameReducer, initialState);
+  const [gameData, setGameDataState] = useState<Game | null>(null);
   const [lastUnlockedAchievement, setLastUnlockedAchievement] = useState<CompletedAchievement | null>(null);
-  const gameDataRef = { current: null as Game | null };
+
+  // Use refs for values needed inside callbacks without stale closures
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const gameDataRef = useRef<Game | null>(null);
 
   const setGameData = useCallback((game: Game) => {
     gameDataRef.current = game;
+    setGameDataState(game);
+    try {
+      localStorage.setItem(GAME_DATA_KEY, JSON.stringify(game));
+    } catch {}
   }, []);
 
   const checkAndUnlockAchievements = useCallback(
@@ -276,39 +289,41 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       const game = gameDataRef.current;
       if (game) {
+        const currentState = stateRef.current;
         const newInventory = choice.stateChanges.items
-          ? [...state.inventory, ...choice.stateChanges.items]
-          : state.inventory;
+          ? [...currentState.inventory, ...choice.stateChanges.items]
+          : currentState.inventory;
         const newClues = choice.stateChanges.clues
-          ? [...state.clues, ...choice.stateChanges.clues]
-          : state.clues;
+          ? [...currentState.clues, ...choice.stateChanges.clues]
+          : currentState.clues;
         const newRelationships = choice.stateChanges.relationships
           ? Object.entries(choice.stateChanges.relationships).reduce(
-              (acc, [key, val]) => ({ ...acc, [key]: (state.relationships[key] || 0) + val }),
-              state.relationships
+              (acc, [key, val]) => ({ ...acc, [key]: (currentState.relationships[key] || 0) + val }),
+              currentState.relationships
             )
-          : state.relationships;
+          : currentState.relationships;
         const isEnding = choice.nextScene.startsWith("ending_");
         const newState: GameState = {
-          ...state,
+          ...currentState,
           currentScene: choice.nextScene,
           inventory: newInventory,
           clues: newClues,
           relationships: newRelationships,
-          choiceHistory: [...state.choiceHistory, { sceneId, choiceId: choice.choiceId, timestamp: Date.now() }],
+          choiceHistory: [...currentState.choiceHistory, { sceneId, choiceId: choice.choiceId, timestamp: Date.now() }],
           currentEnding: isEnding ? choice.nextScene : null,
-          completedAchievements: state.completedAchievements,
+          completedAchievements: currentState.completedAchievements,
         };
         checkAndUnlockAchievements(newState, sceneId, choice.choiceId, choice.text);
       }
     },
-    [state, checkAndUnlockAchievements]
+    [checkAndUnlockAchievements]
   );
 
   const resetGame = useCallback(() => {
     dispatch({ type: "RESET_GAME" });
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(GAME_DATA_KEY);
     } catch {}
   }, []);
 
@@ -324,17 +339,36 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setLastUnlockedAchievement(null);
   }, []);
 
-  // Load saved game on mount
+  const [hasSave, setHasSave] = useState(false);
+
+  // Load saved game and game data on mount
   useEffect(() => {
+    let loadedGame: Game | null = null;
+
+    try {
+      const savedData = localStorage.getItem(GAME_DATA_KEY);
+      if (savedData) {
+        loadedGame = JSON.parse(savedData) as Game;
+        gameDataRef.current = loadedGame;
+        setGameDataState(loadedGame);
+      }
+    } catch {}
+
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as GameState;
         if (parsed.gameId && parsed.currentScene) {
-          dispatch({ type: "LOAD_GAME", state: parsed });
+          if (loadedGame) {
+            dispatch({ type: "LOAD_GAME", state: parsed });
+          } else {
+            localStorage.removeItem(STORAGE_KEY);
+          }
         }
       }
     } catch {}
+
+    setHasSave(!!localStorage.getItem(STORAGE_KEY));
   }, []);
 
   // Save game state on change
@@ -346,10 +380,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [state]);
 
-  const hasSave =
-    typeof window !== "undefined"
-      ? !!localStorage.getItem(STORAGE_KEY)
-      : false;
+  // Update hasSave when state changes
+  useEffect(() => {
+    setHasSave(!!localStorage.getItem(STORAGE_KEY));
+  }, [state.gameId]);
 
   const canUndo = state.operationHistory.length > 0;
 
@@ -357,6 +391,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     <GameContext.Provider
       value={{
         state,
+        gameData,
+        setGameData,
         startGame,
         makeChoice,
         resetGame,
@@ -364,7 +400,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
         canUndo,
         undoChoice,
         rollbackTo,
-        setGameData,
         lastUnlockedAchievement,
         dismissAchievement,
       }}
