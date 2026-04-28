@@ -688,7 +688,7 @@ function AchievementPanel({
                       <circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1" fill="none" />
                     </svg>
                   )}
-                  <span>{isUnlocked ? ach.title : "???"}</span>
+                  <span>{!ach.hidden || isUnlocked ? ach.title : "???"}</span>
                 </div>
               </button>
               {isExpanded && (
